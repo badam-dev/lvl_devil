@@ -1,4 +1,6 @@
 import tkinter as tk
+import json
+import os
 
 #--------------#
 #---Settings---#
@@ -13,6 +15,33 @@ FPS_MS = 16 # ~60 frames per second
 
 BG = "darkorange"
 FG = "black"
+
+#-----------#
+#---Sound---#
+#-----------#
+# The options are saved in a JSON file next to this script.
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "settings.json")
+# To add a new option, add it here with its default value.
+DEFAULT_SETTINGS = {"sound": True}
+ 
+ 
+def load_settings():
+    settings = dict(DEFAULT_SETTINGS)
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            settings.update(json.load(f))
+    except (OSError, ValueError):
+        pass # No file yet or broken file -> use the defaults
+    return settings
+ 
+ 
+def save_settings(settings):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=4)
+    except OSError:
+        pass
 
 #------------#
 #---Levels---#
@@ -63,6 +92,8 @@ class Game:
                                 bg=BG, highlightthickness=0)
         self.canvas.pack()
 
+        self.settings = load_settings()
+        self.menu_widgets = [] # Buttons of the current menu
         self.keys = set()
         self.state = "menu" # "menu", "playing" or "message"
         self.level_index = 0
@@ -77,29 +108,51 @@ class Game:
     #----------#
     #---Menu---#
     #----------#
-    def show_menu(self):
-        self.state = "menu"
+    def clear_menu(self):
+        for widget in self.menu_widgets:
+            widget.destroy()
+        self.menu_widgets = []
         self.canvas.delete("all")
-        self.canvas.create_text(WIDTH // 2, 130, text="LVL-Devil",
+ 
+    def build_menu(self, title, items):
+        """items = list of (button text, command). Returns the buttons."""
+        self.state = "menu"
+        self.clear_menu()
+        self.canvas.create_text(WIDTH // 2, 130, text=title,
                                 font=("Helvetica", 34, "bold"), fill=FG)
-
-        self.menu_button("Start Game", 260, self.start_game)
-        self.menu_button("Options", 340, self.show_options)
-        self.menu_button("Exit", 420, self.root.destroy)
-
-    def menu_button(self, text, y, command):
-        btn = tk.Button(self.root, text=text, command=command,
-                        font=("Helvetica", 18), width=14,
-                        bg=FG, fg=BG, activebackground=BG,
-                        activeforeground=FG, relief="flat")
-        self.canvas.create_window(WIDTH // 2, y, window=btn, tags="menu_btn")
-
+        buttons = []
+        for i, (text, command) in enumerate(items):
+            btn = tk.Button(self.root, text=text, command=command,
+                            font=("Helvetica", 18), width=14,
+                            bg=FG, fg=BG, activebackground=BG,
+                            activeforeground=FG, relief="flat")
+            self.canvas.create_window(WIDTH // 2, 260 + 80 * i, window=btn)
+            self.menu_widgets.append(btn)
+            buttons.append(btn)
+        return buttons
+ 
+    def show_menu(self):
+        self.build_menu("LVL-Devil", [
+            ("Start Game", self.start_game),
+            ("Options", self.show_options),
+            ("Exit", self.root.destroy),
+        ])
+ 
+    def sound_label(self):
+        return "Sound: ON" if self.settings["sound"] else "Sound: OFF"
+ 
     def show_options(self):
-        # Placeholder - not implemented yet.
-        self.canvas.delete("options_msg")
-        self.canvas.create_text(WIDTH // 2, 500, text="Options: coming soon",
-                                font=("Helvetica", 16), fill=FG,
-                                tags="options_msg")
+        # To add another button, add another (text, command) entry here.
+        buttons = self.build_menu("Options", [
+            (self.sound_label(), self.toggle_sound),
+            ("Back", self.show_menu),
+        ])
+        self.sound_button = buttons[0]
+ 
+    def toggle_sound(self):
+        self.settings["sound"] = not self.settings["sound"]
+        save_settings(self.settings)
+        self.sound_button.config(text=self.sound_label())
 
     #----------#
     #---Game---#
