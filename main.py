@@ -1,10 +1,14 @@
-import tkinter as tk
 import json
 import os
+import tkinter as tk
 
-#--------------#
-#---Settings---#
-#--------------#
+# Pygame is used only for playing the .wav files
+try:
+    import pygame
+except ImportError:
+    pygame = None
+
+#-settings-#
 WIDTH, HEIGHT = 800, 600
 GROUND_Y = 340 # Top of the ground (a bit lower than half of 600)
 PLAYER_SIZE = 30
@@ -16,16 +20,16 @@ FPS_MS = 16 # ~60 frames per second
 BG = "darkorange"
 FG = "black"
 
-#-----------#
-#---Sound---#
-#-----------#
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+SOUND_NAMES = ("jump", "break") # assets/jump.wav, assets/break.wav
+
 # The options are saved in a JSON file next to this script.
-SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "settings.json")
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
 # To add a new option, add it here with its default value.
 DEFAULT_SETTINGS = {"sound": True}
- 
- 
+
+
 def load_settings():
     settings = dict(DEFAULT_SETTINGS)
     try:
@@ -34,8 +38,8 @@ def load_settings():
     except (OSError, ValueError):
         pass # No file yet or broken file -> use the defaults
     return settings
- 
- 
+
+
 def save_settings(settings):
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
@@ -43,9 +47,8 @@ def save_settings(settings):
     except OSError:
         pass
 
-#------------#
-#---Levels---#
-#------------#
+
+#-levels-#
 # Each level is a dictionary:
 #   "start_x" : where the player starts (x of the left edge)
 #   "goal_x"  : x of the exit door (touch it to finish the level)
@@ -59,13 +62,13 @@ LEVELS = [
     },
     {
         "start_x": 30,
-        "goal_x": 740,
+        "goal_x": 745,
         "hazards": [(150, 30, 40), (230, 30, 50), (310, 30, 60),
                     (450, 100, 45), (620, 30, 70)],
     },
     {
         "start_x": 30,
-        "goal_x": 740,
+        "goal_x": 745,
         "hazards": [(120, 25, 35), (190, 25, 35), (260, 25, 35),
                     (360, 60, 70), (480, 25, 40), (540, 25, 40),
                     (650, 50, 60)],
@@ -79,13 +82,19 @@ LEVELS = [
     },
 ]
 
-#-----------------#
-#---Game engine---#
-#-----------------#
+
 class Game:
     def __init__(self, root):
         self.root = root
-        root.title("LVL-Devil")
+        root.title("lVl-Devil")
+
+        # Window icon (assets/icon.png)
+        try:
+            self.icon = tk.PhotoImage(file=os.path.join(ASSETS_DIR, "icon.png"))
+            root.iconphoto(True, self.icon)
+        except tk.TclError:
+            pass # No icon file found -> default icon
+
         root.resizable(False, False)
 
         self.canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT,
@@ -93,6 +102,7 @@ class Game:
         self.canvas.pack()
 
         self.settings = load_settings()
+        self.load_sounds()
         self.menu_widgets = [] # Buttons of the current menu
         self.keys = set()
         self.state = "menu" # "menu", "playing" or "message"
@@ -105,15 +115,35 @@ class Game:
         self.show_menu()
         self.tick()
 
-    #----------#
-    #---Menu---#
-    #----------#
+    #-sound-#
+    def load_sounds(self):
+        self.sounds = {}
+        if pygame is None:
+            print("pygame is not installed -> no sound (pip install pygame)")
+            return
+        try:
+            pygame.mixer.init()
+        except pygame.error:
+            print("No audio device found -> no sound")
+            return
+        for name in SOUND_NAMES:
+            path = os.path.join(ASSETS_DIR, name + ".wav")
+            try:
+                self.sounds[name] = pygame.mixer.Sound(path)
+            except (pygame.error, OSError):
+                print("Could not load", path)
+
+    def play_sound(self, name):
+        if self.settings["sound"] and name in self.sounds:
+            self.sounds[name].play()
+
+    #-menus-#
     def clear_menu(self):
         for widget in self.menu_widgets:
             widget.destroy()
         self.menu_widgets = []
         self.canvas.delete("all")
- 
+
     def build_menu(self, title, items):
         """items = list of (button text, command). Returns the buttons."""
         self.state = "menu"
@@ -130,17 +160,17 @@ class Game:
             self.menu_widgets.append(btn)
             buttons.append(btn)
         return buttons
- 
+
     def show_menu(self):
-        self.build_menu("LVL-Devil", [
+        self.build_menu("lVl-Devil", [
             ("Start Game", self.start_game),
             ("Options", self.show_options),
             ("Exit", self.root.destroy),
         ])
- 
+
     def sound_label(self):
         return "Sound: ON" if self.settings["sound"] else "Sound: OFF"
- 
+
     def show_options(self):
         # To add another button, add another (text, command) entry here.
         buttons = self.build_menu("Options", [
@@ -148,15 +178,13 @@ class Game:
             ("Back", self.show_menu),
         ])
         self.sound_button = buttons[0]
- 
+
     def toggle_sound(self):
         self.settings["sound"] = not self.settings["sound"]
         save_settings(self.settings)
         self.sound_button.config(text=self.sound_label())
 
-    #----------#
-    #---Game---#
-    #----------#
+    #-game-#
     def start_game(self):
         self.level_index = 0
         self.deaths = 0
@@ -172,10 +200,11 @@ class Game:
         self.on_ground = True
         self.keys.clear()
         self.state = "playing"
-        self.canvas.delete("all") # Also removes the menu buttons
+        self.clear_menu()
 
     def restart_level(self):
         self.deaths += 1
+        self.play_sound("break")
         self.show_message("Ouch!", 600, self.load_level)
 
     def next_level(self):
@@ -192,9 +221,7 @@ class Game:
                                 font=("Helvetica", 32, "bold"), fill=FG)
         self.root.after(delay_ms, then)
 
-    #-----------#
-    #---Input---#
-    #-----------#
+    #-input-#
     def on_key_press(self, event):
         if event.keysym == "Escape":
             if self.state != "menu":
@@ -205,9 +232,7 @@ class Game:
     def on_key_release(self, event):
         self.keys.discard(event.keysym.lower())
 
-    #---------------#
-    #---Main loop---#
-    #---------------#
+    #-main_loop-#
     def tick(self):
         if self.state == "playing":
             self.update()
@@ -226,6 +251,7 @@ class Game:
         if "space" in self.keys and self.on_ground:
             self.vy = JUMP_SPEED
             self.on_ground = False
+            self.play_sound("jump")
 
         # Gravity
         self.vy += GRAVITY
