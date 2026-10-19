@@ -1,7 +1,7 @@
 import tkinter as tk
 import json
 import os
-#-!ghp_zOkE26OvQXrdq0!-#
+
 #--------------#
 #---Settings---#
 #--------------#
@@ -42,7 +42,7 @@ def save_settings(settings):
             json.dump(settings, f, indent=4)
     except OSError:
         pass
-#-!r8wzlftCM6LnQ9WV0awrzE!-#
+
 #------------#
 #---Levels---#
 #------------#
